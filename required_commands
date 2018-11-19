@@ -1,0 +1,10 @@
+$ brew install ext2fuse
+// You may have to do some other things with brew like brew cask just follow the instructions
+
+$ brew install e2fsprogs
+
+$ sudo fuse-ext2 EXT2_test.img fs
+
+$ hdiutil attach -readonly -nomount EXT2_test.img
+
+$ /usr/local/opt/e2fsprogs/sbin/debugfs EXT2_test.img 
