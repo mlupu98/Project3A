@@ -41,7 +41,7 @@ void createSuperblockSummary(int fd, const char *path)
 
     dprintf(superblockFd, "%d,", superBuffer.s_inodes_per_group);
 
-    dprintf(superblockFd, "%d\n,", superBuffer.s_first_ino);
+    dprintf(superblockFd, "%d\n", superBuffer.s_first_ino);
 
     close(superblockFd);
 }
@@ -98,7 +98,7 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
 
         dprintf(groupFd, "%d,", groupBuffer[i].bg_inode_bitmap);
 
-        dprintf(groupFd, "%d\n,", groupBuffer[i].bg_inode_table);
+        dprintf(groupFd, "%d\n", groupBuffer[i].bg_inode_table);
     }
 
     close(groupFd);
@@ -133,7 +133,7 @@ void createFreeSummary(int fd, const char *groupPath, const char *inodePath, int
                     dprintf(freeGroupFd, "BFREE,");
 
                     int blockNumber = i * superBuffer.s_blocks_per_group + j * 8 + k + 1;
-                    dprintf(freeGroupFd, "%d\n,", blockNumber);
+                    dprintf(freeGroupFd, "%d\n", blockNumber);
                 }
             }
 
@@ -147,7 +147,7 @@ void createFreeSummary(int fd, const char *groupPath, const char *inodePath, int
                     dprintf(freeInodeFd, "IFREE,");
 
                     int inodeNumber = i * superBuffer.s_inodes_per_group + j * 8 + k + 1;
-                    dprintf(freeInodeFd, "%d\n,", inodeNumber);
+                    dprintf(freeInodeFd, "%d\n", inodeNumber);
                 }
             }
         }
