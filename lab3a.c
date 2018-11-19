@@ -2,22 +2,30 @@
 // Created by Matei Lupu on 11/17/18.
 //
 #include <stdio.h>
-#include "ext2_fs.h"
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <inttypes.h>
+#include <time.h>
+#include <errno.h>
+
+#include "ext2_fs.h"
 
 #define superblockOffset 1024
 #define groupOffset 1024
 
 struct ext2_super_block superBuffer;
 struct ext2_inode inodeBuffer;
-struct ext2_group_desc groupBuffer;
+struct ext2_group_desc* groupBuffer;
 
 void createSuperblockSummary(int fd, const char *path)
 {
     int superblockFd = creat(path, S_IRWXU); // file owner has read, write and execute permissions
 
-    pread(fd, &superBuffer, sizeof(ext2_super_block), superblockOffset);
+    pread(fd, &superBuffer, sizeof(struct ext2_super_block), superblockOffset);
 
     dprintf(superblockFd, "SUPERBLOCK,");
 
@@ -52,9 +60,9 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
     int i = 0;
     for (; i < numberOfGroups; i++)
     {
-        pread(fd, &groupBuffer[i], sizeof(ext2_group_desc), superblockOffset + groupOffset + sizeof(struct ext2_group_desc) * i)
+        pread(fd, &groupBuffer[i], sizeof(struct ext2_group_desc), superblockOffset + groupOffset + sizeof(struct ext2_group_desc) * i);
 
-            dprintf(groupFd, "GROUP,");
+        dprintf(groupFd, "GROUP,");
 
         dprintf(groupFd, "%d,", i);
 
@@ -94,9 +102,11 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
     }
 
     close(groupFd);
+
+    return numberOfGroups;
 }
 
-void createFreeSummary(int fd, const char *groupPath, const char *inodePath int numOfGroups)
+void createFreeSummary(int fd, const char *groupPath, const char *inodePath, int numOfGroups)
 {
     int freeGroupFd = creat(groupPath, S_IRWXU);
     int freeInodeFd = creat(inodePath, S_IRWXU);
@@ -147,7 +157,7 @@ void createFreeSummary(int fd, const char *groupPath, const char *inodePath int 
     close(freeInodeFd);
 }
 
-void createInodeSummary(int fd, const char *path, numOfGroups)
+void createInodeSummary(int fd, const char *path, int numOfGroups)
 {
 }
 
@@ -164,7 +174,7 @@ int main(int argc, char *argv[])
 
     if (argv[1] != NULL)
     {
-        char *filename = argv[1];
+        filename = argv[1];
     }
     else
     {
