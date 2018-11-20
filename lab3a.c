@@ -176,7 +176,8 @@ void processIndirect(int fd, int inodeFd, int inodeNum, int blockNum, int offset
     uint32_t indirectBlock[ext2BlockSize];
     pread(fd, &indirectBlock, ext2BlockSize, blockNum * ext2BlockSize);
 
-    for (int i = 0; i < (ext2BlockSize / sizeof(uint32_t)); i++)
+    int lim = (ext2BlockSize / sizeof(uint32_t));
+    for (int i = 0; i < lim; i++)
     {
         while (indirectBlock[i] == 0)
         {
