@@ -16,10 +16,13 @@
 
 #define superblockOffset 1024
 #define groupOffset 1024
+#define ext2BlockSize 1024
 
 struct ext2_super_block superBuffer;
 struct ext2_inode inodeBuffer;
-struct ext2_group_desc* groupBuffer;
+struct ext2_group_desc *groupBuffer;
+
+// Superblock Summary
 
 void createSuperblockSummary(int fd, const char *path)
 {
@@ -45,6 +48,8 @@ void createSuperblockSummary(int fd, const char *path)
 
     close(superblockFd);
 }
+
+// Group Summary
 
 int createGroupSummary(int fd, const char *path) // returns number of froups
 {
@@ -106,6 +111,8 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
     return numberOfGroups;
 }
 
+// Free Block Summary
+
 void createFreeSummary(int fd, const char *groupPath, const char *inodePath, int numOfGroups)
 {
     int freeGroupFd = creat(groupPath, S_IRWXU);
@@ -157,8 +164,151 @@ void createFreeSummary(int fd, const char *groupPath, const char *inodePath, int
     close(freeInodeFd);
 }
 
+void formatTime(uint32_t t, char *buf)
+{
+    time_t timer = t;
+    struct tm *ts = gmtime(&timer);
+    strftime(buf, 80, "%m/%d/%y %H:%M:%S", ts);
+}
+
+void processIndirect(int fd, int inodeFd, int inodeNum, int blockNum, int offset, int level)
+{
+    uint32_t indirectBlock[ext2BlockSize];
+    pread(fd, &indirectBlock, ext2BlockSize, blockNum * ext2BlockSize);
+
+    for (int i = 0; i < (ext2BlockSize / sizeof(uint32_t)); i++)
+    {
+        while (indirectBlock[i] == 0)
+        {
+            dprintf(inodeFd, "INDIRECT, %u, %u %u, %u, %u\n", inodeNum, level, offset, blockNum, indirectBlock[i]);
+
+            if (level > 1)
+                processIndirect(fd, inodeFd, inodeNum, indirectBlock[i], offset + i, level - 1);
+        }
+    }
+}
+
+void processDirectory(int fd, int inodeFd, struct ext2_inode inode, int inodeNum)
+{
+    unsigned char block[ext2BlockSize]; // TODO: Check blocksize
+    struct ext2_dir_entry *dir;
+    unsigned int j = 0;
+
+    for (int i = 0; i < EXT2_NDIR_BLOCKS; i++)
+    {
+        if (inode.i_block[i] == 0)
+            return;
+        pread(fd, block, ext2BlockSize, inode.i_block[i] * ext2BlockSize);
+        dir = (struct ext2_dir_entry *)block;
+        while ((j < inode.i_size) && dir->file_type)
+        {
+            if (dir->inode > 0 && dir->name_len > 0)
+            {
+                char fileName[EXT2_NAME_LEN + 1];
+                strncpy(fileName, dir->name, dir->name_len);
+                fileName[dir->name_len] = 0;
+                dprintf(inodeFd, "DIRENT,%u,%u,%u,%u,%u,'%s'\n",
+                        inodeNum,
+                        j,
+                        dir->inode,
+                        dir->rec_len,
+                        dir->name_len,
+                        fileName);
+                j += dir->rec_len;
+                dir = (void *)dir + dir->rec_len;
+            }
+        }
+    }
+
+    // Each call represents a different level.
+    if (inode.i_block[EXT2_IND_BLOCK] != 0)
+        processIndirect(fd, inodeFd, inodeNum, inode.i_block[EXT2_IND_BLOCK], 12, 1);
+    if (inode.i_block[EXT2_DIND_BLOCK] != 0)
+        processIndirect(fd, inodeFd, inodeNum, inode.i_block[EXT2_DIND_BLOCK], 12 + 256, 2);
+    if (inode.i_block[EXT2_TIND_BLOCK] != 0)
+        processIndirect(fd, inodeFd, inodeNum, inode.i_block[EXT2_TIND_BLOCK], 12 + 256 + (256 * 256), 3);
+}
+
+// Inode Summary
 void createInodeSummary(int fd, const char *path, int numOfGroups)
 {
+    int inodeFd = creat(path, S_IRWXU);
+    uint16_t fileType;
+    for (int i = 0; i < numOfGroups; i++)
+    {
+        for (unsigned int j = 1; j < superBuffer.s_inodes_count; j++)
+        {
+            pread(fd, &inodeBuffer, sizeof(struct ext2_inode), superblockOffset + 4 * groupOffset + sizeof(struct ext2_inode) * j);
+
+            if (inodeBuffer.i_mode != 0 && inodeBuffer.i_links_count != 0)
+            {
+                fileType = inodeBuffer.i_mode;
+                if (fileType & 0x8000)
+                    fileType = 'f';
+                else if (fileType & 0x4000)
+                    fileType = 'd';
+                else if (fileType & 0xA000)
+                    fileType = 's';
+                else
+                    fileType = '?';
+
+                // Get Time from Inode
+                char lastChangeTime[100];
+                char modificationTime[100];
+                char accessTime[100];
+                formatTime(inodeBuffer.i_ctime, lastChangeTime);
+                formatTime(inodeBuffer.i_mtime, modificationTime);
+                formatTime(inodeBuffer.i_atime, accessTime);
+
+                dprintf(inodeFd, "INODE,%u,%c,%o,%u,%u,%u,%s,%s,%s,%d,%d",
+                        j,
+                        fileType,
+                        inodeBuffer.i_mode & 0xFFF,
+                        inodeBuffer.i_uid,
+                        inodeBuffer.i_gid,
+                        inodeBuffer.i_links_count,
+                        lastChangeTime,
+                        modificationTime,
+                        accessTime,
+                        inodeBuffer.i_size,
+                        inodeBuffer.i_blocks);
+
+                for (int k = 0; k < EXT2_N_BLOCKS; k++)
+                {
+                    dprintf(inodeFd, ",%u", inodeBuffer.i_block[k]);
+                }
+                dprintf(inodeFd, "\n"); // or printf?
+
+                if (fileType == 'd')
+                    processDirectory(fd, inodeFd, inodeBuffer, j);
+
+                // Each call is different directory.
+                if (inodeBuffer.i_block[EXT2_IND_BLOCK] != 0)
+                    processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_IND_BLOCK], 12, 1);
+                if (inodeBuffer.i_block[EXT2_DIND_BLOCK] != 0)
+                {
+                    processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_DIND_BLOCK], 12 + 256, 2);
+                }
+                if (inodeBuffer.i_block[EXT2_TIND_BLOCK] != 0)
+                {
+                    processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_TIND_BLOCK], 12 + 256 + (256 * 256), 3);
+                }
+            }
+        }
+    }
+}
+
+// Change this code.
+void printCSV(const char *filename)
+{
+    int fd = open(filename, O_RDONLY);
+    char buf[1024];
+    int len;
+    while ((len = read(fd, buf, 1024)) > 0)
+    {
+        write(1, buf, len);
+    }
+    close(fd);
 }
 
 int main(int argc, char *argv[])
@@ -171,6 +321,12 @@ int main(int argc, char *argv[])
     const char *inodePath = "inodeCSV.csv";
 
     char *filename;
+
+    if (argc != 2)
+    {
+        fprintf(stderr, "Error: Incorrect number of arguments.\n");
+        exit(1);
+    }
 
     if (argv[1] != NULL)
     {
@@ -192,7 +348,13 @@ int main(int argc, char *argv[])
     createSuperblockSummary(fd, superPath);
     int numberOfGroups = createGroupSummary(fd, groupPath);
     createFreeSummary(fd, freeGroupPath, freeInodePath, numberOfGroups);
-    //  createInodeSummary(fd, inodePath, numberOfGroups);
+    createInodeSummary(fd, inodePath, numberOfGroups);
+
+    printCSV(superPath);
+    printCSV(groupPath);
+    printCSV(freeGroupPath);
+    printCSV(freeInodePath);
+    printCSV(inodePath);
 
     close(fd);
 
@@ -217,3 +379,5 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+// Directory Entries
