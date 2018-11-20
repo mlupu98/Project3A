@@ -28,6 +28,9 @@ void createSuperblockSummary(int fd, const char *path)
 {
     int superblockFd = creat(path, S_IRWXU); // file owner has read, write and execute permissions
 
+    int blockSize = 1024;
+    int retSize = blockSize << superBuffer.s_log_block_size;
+
     pread(fd, &superBuffer, sizeof(struct ext2_super_block), superblockOffset);
 
     dprintf(superblockFd, "SUPERBLOCK,");
@@ -36,7 +39,7 @@ void createSuperblockSummary(int fd, const char *path)
 
     dprintf(superblockFd, "%d,", superBuffer.s_inodes_count);
 
-    dprintf(superblockFd, "%d,", superBuffer.s_log_block_size);
+    dprintf(superblockFd, "%d,", retSize);
 
     dprintf(superblockFd, "%d,", superBuffer.s_inode_size);
 
@@ -81,6 +84,10 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
             {
                 dprintf(groupFd, "%d,", blockRemainder);
             }
+            else
+            {
+                dprintf(groupFd, "%d,", superBuffer.s_blocks_per_group);
+            }
         }
 
         if (inodeRemainder == 0)
@@ -92,6 +99,10 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
             if ((i - 1) == 0)
             {
                 dprintf(groupFd, "%d,", inodeRemainder);
+            }
+            else
+            {
+                dprintf(groupFd, "%d,", superBuffer.s_inodes_per_group);
             }
         }
 
@@ -176,7 +187,8 @@ void processIndirect(int fd, int inodeFd, int inodeNum, int blockNum, int offset
     uint32_t indirectBlock[ext2BlockSize];
     pread(fd, &indirectBlock, ext2BlockSize, blockNum * ext2BlockSize);
 
-    for (int i = 0; i < (ext2BlockSize / sizeof(uint32_t)); i++)
+    int lim = (ext2BlockSize / sizeof(uint32_t));
+    for (int i = 0; i < lim; i++)
     {
         while (indirectBlock[i] == 0)
         {
@@ -379,5 +391,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-// Directory Entries

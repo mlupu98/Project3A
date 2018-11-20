@@ -1,6 +1,11 @@
 //
 // Created by Matei Lupu on 11/17/18.
 //
+
+#define _XOPEN_SOURCE 500
+#define _POSIX_C_SOURCE  200809L
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -10,6 +15,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <time.h>
+#include <stdio.h>
 #include <errno.h>
 
 #include "ext2_fs.h"
@@ -80,7 +86,7 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
         }
         else
         {
-            if ((i - 1) == 0)
+            if ((i + 1) == numberOfGroups)
             {
                 dprintf(groupFd, "%d,", blockRemainder);
             }
@@ -96,7 +102,7 @@ int createGroupSummary(int fd, const char *path) // returns number of froups
         }
         else
         {
-            if ((i - 1) == 0)
+            if ((i + 1) == numberOfGroups)
             {
                 dprintf(groupFd, "%d,", inodeRemainder);
             }
@@ -391,3 +397,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
