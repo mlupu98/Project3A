@@ -206,7 +206,7 @@ void processIndirect(int fd, int inodeFd, int inodeNum, int blockNum, int offset
     }
 }
 
-void processDirectory(int fd, int inodeFd, struct ext2_inode inode, int inodeNum)
+void processDirectory(int fd, int inodeFd, struct ext2_inode *inode, int inodeNum)
 {
     unsigned char block[ext2BlockSize]; // TODO: Check blocksize
     struct ext2_dir_entry *dir;
@@ -214,18 +214,18 @@ void processDirectory(int fd, int inodeFd, struct ext2_inode inode, int inodeNum
 
     for (int i = 0; i < EXT2_NDIR_BLOCKS; i++)
     {
-        if (inode.i_block[i] == 0)
+        if (inode->i_block[i] == 0)
             return;
-        pread(fd, block, ext2BlockSize, inode.i_block[i] * ext2BlockSize);
+        pread(fd, block, sizeof(struct ext2_dir_entry), inode->i_block[i] * ext2BlockSize);
         dir = (struct ext2_dir_entry *)block;
-        while (j < ext2BlockSize)
+        while (j < 128 && dir->file_type) // inode size.
         {
             if (dir->inode != 0)
             {
                 char fileName[EXT2_NAME_LEN + 1];
                 strncpy(fileName, dir->name, dir->name_len);
                 fileName[dir->name_len] = 0;
-                dprintf(inodeFd, "DIRENT,%u,%u,%u,%u,%u,'%s'\n",
+                dprintf(inodeFd, "DIRENT,%u,%u,%u,%u,%u,\'%s\'\n",
                         inodeNum,
                         j,
                         dir->inode,
@@ -239,12 +239,12 @@ void processDirectory(int fd, int inodeFd, struct ext2_inode inode, int inodeNum
     }
 
     // Each call represents a different level.
-    if (inode.i_block[EXT2_IND_BLOCK] != 0)
-        processIndirect(fd, inodeFd, inodeNum, inode.i_block[EXT2_IND_BLOCK], 12, 1);
-    if (inode.i_block[EXT2_DIND_BLOCK] != 0)
-        processIndirect(fd, inodeFd, inodeNum, inode.i_block[EXT2_DIND_BLOCK], 12 + 256, 2);
-    if (inode.i_block[EXT2_TIND_BLOCK] != 0)
-        processIndirect(fd, inodeFd, inodeNum, inode.i_block[EXT2_TIND_BLOCK], 12 + 256 + (256 * 256), 3);
+    if (inode->i_block[EXT2_IND_BLOCK] != 0)
+        processIndirect(fd, inodeFd, inodeNum, inode->i_block[EXT2_IND_BLOCK], 12, 1);
+    if (inode->i_block[EXT2_DIND_BLOCK] != 0)
+        processIndirect(fd, inodeFd, inodeNum, inode->i_block[EXT2_DIND_BLOCK], 12 + 256, 2);
+    if (inode->i_block[EXT2_TIND_BLOCK] != 0)
+        processIndirect(fd, inodeFd, inodeNum, inode->i_block[EXT2_TIND_BLOCK], 12 + 256 + (256 * 256), 3);
 }
 
 // Inode Summary
@@ -298,19 +298,19 @@ void createInodeSummary(int fd, const char *path, int numOfGroups)
                 dprintf(inodeFd, "\n"); // or printf?
 
                 if (fileType == 'd')
-                    processDirectory(fd, inodeFd, inodeBuffer, j);
+                    processDirectory(fd, inodeFd, &inodeBuffer, j);
 
-                // Each call is different directory.
-                if (inodeBuffer.i_block[EXT2_IND_BLOCK] != 0)
-                    processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_IND_BLOCK], 12, 1);
-                if (inodeBuffer.i_block[EXT2_DIND_BLOCK] != 0)
-                {
-                    processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_DIND_BLOCK], 12 + 256, 2);
-                }
-                if (inodeBuffer.i_block[EXT2_TIND_BLOCK] != 0)
-                {
-                    processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_TIND_BLOCK], 12 + 256 + (256 * 256), 3);
-                }
+                // // Each call is different directory.
+                // if (inodeBuffer.i_block[EXT2_IND_BLOCK] != 0)
+                //     processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_IND_BLOCK], 12, 1);
+                // if (inodeBuffer.i_block[EXT2_DIND_BLOCK] != 0)
+                // {
+                //     processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_DIND_BLOCK], 12 + 256, 2);
+                // }
+                // if (inodeBuffer.i_block[EXT2_TIND_BLOCK] != 0)
+                // {
+                //     processIndirect(fd, inodeFd, j, inodeBuffer.i_block[EXT2_TIND_BLOCK], 12 + 256 + (256 * 256), 3);
+                // }
             }
         }
     }
@@ -365,8 +365,9 @@ int main(int argc, char *argv[])
 
     createSuperblockSummary(fd, superPath);
     int numberOfGroups = createGroupSummary(fd, groupPath);
-    createFreeSummary(fd, freeGroupPath, freeInodePath, numberOfGroups);
     createInodeSummary(fd, inodePath, numberOfGroups);
+    createFreeSummary(fd, freeGroupPath, freeInodePath, numberOfGroups);
+    // createInodeSummary(fd, inodePath, numberOfGroups);
 
     printCSV(superPath);
     printCSV(groupPath);
