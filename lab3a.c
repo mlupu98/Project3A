@@ -3,7 +3,7 @@
 //
 
 #define _XOPEN_SOURCE 500
-#define _POSIX_C_SOURCE  200809L
+#define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -218,9 +218,9 @@ void processDirectory(int fd, int inodeFd, struct ext2_inode inode, int inodeNum
             return;
         pread(fd, block, ext2BlockSize, inode.i_block[i] * ext2BlockSize);
         dir = (struct ext2_dir_entry *)block;
-        while ((j < inode.i_size) && dir->file_type)
+        while (j < ext2BlockSize)
         {
-            if (dir->inode > 0 && dir->name_len > 0)
+            if (dir->inode != 0)
             {
                 char fileName[EXT2_NAME_LEN + 1];
                 strncpy(fileName, dir->name, dir->name_len);
@@ -256,7 +256,7 @@ void createInodeSummary(int fd, const char *path, int numOfGroups)
     {
         for (unsigned int j = 1; j < superBuffer.s_inodes_count; j++)
         {
-            pread(fd, &inodeBuffer, sizeof(struct ext2_inode), superblockOffset + 4 * groupOffset + sizeof(struct ext2_inode) * j);
+            pread(fd, &inodeBuffer, sizeof(struct ext2_inode), superblockOffset + 4 * groupOffset + sizeof(struct ext2_inode) * (j - 1));
 
             if (inodeBuffer.i_mode != 0 && inodeBuffer.i_links_count != 0)
             {
@@ -397,4 +397,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
